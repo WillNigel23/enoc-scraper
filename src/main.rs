@@ -5,10 +5,12 @@ use std::{env, str::EncodeUtf16};
 
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Deserialize)]
+use serde_sheets::{get_sheets, service_account_from_env};
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 struct AlarmItem {
     #[serde(rename = "Alarmmappings.alias")]
     alarm_name: Option<String>,
@@ -63,12 +65,19 @@ async fn main() -> Result<()> {
 
     if response.status().is_success() {
         let enoc_response: EnocResponse = response.json().await?;
+        let first_result = enoc_response.results.first().expect("Expected at least one result");
+        let result_data = &first_result.data;
+        // let results_slice: &[AlarmItem] = std::slice::from_ref(result_data);
 
-        for result in enoc_response.results {
-            for data_item in result.data {
-                println!("{:?}", data_item);
-            }
-        }
+        let spreadsheet_id = env::var("SPREADSHEET_ID").expect("SPREADSHEET_ID not found in .env");
+        let service_account = service_account_from_env().unwrap();
+        let mut sheets = get_sheets(service_account, Some("token_cache.json"))
+            .await
+            .unwrap();
+
+        serde_sheets::write_page(&mut sheets, &spreadsheet_id, "Sheet1", &result_data)
+            .await
+            .unwrap();
     } else {
         println!("Error: {:?}", response.status());
     }
