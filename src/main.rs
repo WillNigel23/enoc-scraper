@@ -1,14 +1,16 @@
 use anyhow::Result;
 
 use dotenv::dotenv;
-use std::{env, str::EncodeUtf16};
+use std::env;
 
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
+use reqwest::Error;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-
 use serde_sheets::{get_sheets, service_account_from_env};
+
+use chrono::Local;
+use tokio::time::{self, Duration};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 struct AlarmItem {
@@ -46,12 +48,22 @@ struct EnocResponse {
     results: Vec<Alarm>,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    dotenv().ok();
+#[derive(Debug, Deserialize, Serialize)]
+struct AuthToken {
+    token: String
+}
 
+async fn auth_token(query_url: &str) -> Result<String, Error> {
+    let response = reqwest::get(query_url).await?;
+    let auth_response: AuthToken = response.json().await?;
+
+    Ok(auth_response.token)
+}
+
+async fn update_sheets() -> Result<()> {
     let enoc_query_url = env::var("ENOC_QUERY_URL").expect("ENOC_QUERY_URL not found in .env");
-    let enoc_authorization_token = env::var("ENOC_AUTHORIZATION_TOKEN").expect("ENOC_AUTHORIZATION_TOKEN not found in .env");
+    let enoc_authorization_token_url = env::var("ENOC_AUTHORIZATION_TOKEN").expect("ENOC_AUTHORIZATION_TOKEN not found in .env");
+    let enoc_authorization_token = auth_token(&enoc_authorization_token_url).await.unwrap();
 
     let client = reqwest::Client::new();
     let mut headers = HeaderMap::new();
@@ -67,7 +79,6 @@ async fn main() -> Result<()> {
         let enoc_response: EnocResponse = response.json().await?;
         let first_result = enoc_response.results.first().expect("Expected at least one result");
         let result_data = &first_result.data;
-        // let results_slice: &[AlarmItem] = std::slice::from_ref(result_data);
 
         let spreadsheet_id = env::var("SPREADSHEET_ID").expect("SPREADSHEET_ID not found in .env");
         let service_account = service_account_from_env().unwrap();
@@ -78,9 +89,26 @@ async fn main() -> Result<()> {
         serde_sheets::write_page(&mut sheets, &spreadsheet_id, "Sheet1", &result_data)
             .await
             .unwrap();
+
+        let current_time = Local::now();
+        println!("Successfully updated sheets at {:?}", current_time);
     } else {
         println!("Error: {:?}", response.status());
     }
 
     Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    dotenv().ok();
+
+    let mut interval = time::interval(Duration::from_secs(300));
+
+    loop {
+        interval.tick().await;
+        println!("Running scheduled update...");
+
+        let _ = update_sheets().await;
+    }
 }

@@ -7,7 +7,7 @@
 * Setup environment variables
 
     - `ENOC_QUERY_URL` query url
-    - `ENOC_AUTHORIZATION_TOKEN` auth token
+    - `ENOC_AUTHORIZATION_TOKEN` auth token url
     - `SPREADSHEET_ID` spreadsheet id
     - `SERVICE_ACCOUNT_JSON` google sheet api key
 
@@ -15,6 +15,6 @@
 
 ## Notes
 
-For automated interval runs, need to setup cron job.
+* `cargo run` to start
 
-Can be setup in windows, linux, or macos. Ideally we run this in server like digital ocean so it runs 24/7
+* `Ctrl + C` to stop running
